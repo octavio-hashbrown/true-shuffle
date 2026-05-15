@@ -535,13 +535,13 @@ function fisherYates(arr) {
 
 async function fetchAllTracks(playlistId) {
   const uris = [];
-  let url = `/playlists/${playlistId}/tracks?limit=100&fields=items(track(uri,is_local)),next`;
+  let url = `/playlists/${playlistId}/items?limit=100&fields=items(is_local,item(uri)),next`;
   while (url) {
     const page = await api(url);
     for (const it of page.items) {
-      if (!it.track) continue;            // unavailable / null
-      if (it.track.is_local) continue;    // local files can't be re-added reliably
-      uris.push(it.track.uri);
+      if (!it.item) continue;             // unavailable / null
+      if (it.is_local) continue;          // local files can't be re-added reliably
+      uris.push(it.item.uri);
     }
     url = page.next;
   }
@@ -591,7 +591,7 @@ async function backupPlaylist(playlist, uris) {
 async function replacePlaylistTracks(playlistId, uris) {
   // PUT replaces first batch of up to 100. POST appends remaining batches.
   const first = uris.slice(0, 100);
-  await api(`/playlists/${playlistId}/tracks`, {
+  await api(`/playlists/${playlistId}/items`, {
     method: 'PUT',
     body: JSON.stringify({ uris: first }),
   });
@@ -603,7 +603,7 @@ async function replacePlaylistTracks(playlistId, uris) {
 async function addTracksInBatches(playlistId, uris) {
   for (let i = 0; i < uris.length; i += 100) {
     const batch = uris.slice(i, i + 100);
-    await api(`/playlists/${playlistId}/tracks`, {
+    await api(`/playlists/${playlistId}/items`, {
       method: 'POST',
       body: JSON.stringify({ uris: batch }),
     });
