@@ -456,28 +456,40 @@ async function api(path, opts = {}) {
 }
 
 async function afterAuth() {
-  currentUser = await api('/me');
-  els.who.hidden = false;
-  els.whoName.textContent = currentUser.display_name || currentUser.id;
-  els.connect.hidden = true;
-  els.disconnect.hidden = false;
-  els.controls.hidden = false;
-  els.playlists.hidden = false;
-  await loadOwnedPlaylists();
+  try {
+    currentUser = await api('/me');
+    els.who.hidden = false;
+    els.whoName.textContent = currentUser.display_name || currentUser.id;
+    els.connect.hidden = true;
+    els.disconnect.hidden = false;
+    els.controls.hidden = false;
+    els.playlists.hidden = false;
+    await loadOwnedPlaylists();
+  } catch (e) {
+    log('Auth flow failed: ' + e.message, 'err');
+  }
 }
 
 async function loadOwnedPlaylists() {
   els.playlistsList.innerHTML = '<div class="empty">Loading playlists…</div>';
-  const playlists = [];
-  let url = '/me/playlists?limit=50';
-  while (url) {
-    const page = await api(url);
-    for (const p of page.items) {
-      if (p.owner && p.owner.id === currentUser.id) playlists.push(p);
+  try {
+    const playlists = [];
+    let seen = 0;
+    let url = '/me/playlists?limit=50';
+    while (url) {
+      const page = await api(url);
+      seen += page.items.length;
+      for (const p of page.items) {
+        if (p && p.owner && p.owner.id === currentUser.id) playlists.push(p);
+      }
+      url = page.next;
     }
-    url = page.next;
+    log(`Loaded ${playlists.length} owned playlists (scanned ${seen} total).`, 'ok');
+    renderPlaylists(playlists);
+  } catch (e) {
+    log('Failed to load playlists: ' + e.message, 'err');
+    els.playlistsList.innerHTML = '<div class="empty">Failed to load. See log.</div>';
   }
-  renderPlaylists(playlists);
 }
 
 function renderPlaylists(playlists) {
@@ -494,7 +506,7 @@ function renderPlaylists(playlists) {
         <div class="pl-name"></div>
         <div class="pl-meta mono"></div>
       </div>
-      <span class="pl-meta mono">${p.tracks.total} tracks</span>
+      <span class="pl-meta mono">${p.tracks?.total ?? '?'} tracks</span>
       <button class="primary">Shuffle »»</button>
     `;
     row.querySelector('.pl-name').textContent = p.name;
@@ -536,7 +548,7 @@ async function shufflePlaylist(playlist, btn) {
   const label = btn.textContent;
   btn.textContent = 'Working…';
   try {
-    log(`Shuffling "${playlist.name}" (${playlist.tracks.total} tracks)…`);
+    log(`Shuffling "${playlist.name}" (${playlist.tracks?.total ?? '?'} tracks)…`);
     const uris = await fetchAllTracks(playlist.id);
     log(`Fetched ${uris.length} usable track URIs.`);
 
