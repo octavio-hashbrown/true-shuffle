@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>True Shuffle — Lo Media Studios</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --bg-2: #111;
+    --navy: #104473;
+    --navy-2: #1a5a96;
+    --cyan: #7cdbff;
+    --text: #e8e8e8;
+    --mute: #8a8a8a;
+    --line: #1f1f1f;
+    --warn: #ffb86b;
+    --err: #ff7676;
+    --ok: #7cffae;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+  a { color: var(--cyan); }
+  .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
+
+  header {
+    border-bottom: 1px solid var(--line);
+    padding: 28px 32px 24px;
+  }
+  .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .brand h1 {
+    font-size: clamp(28px, 4vw, 44px);
+    font-weight: 800;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .chev {
+    color: var(--cyan);
+    font-weight: 800;
+    font-size: clamp(28px, 4vw, 44px);
+    letter-spacing: -0.08em;
+  }
+  .tag {
+    color: var(--mute);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+
+  main {
+    padding: 32px;
+    max-width: 980px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  section { margin-bottom: 36px; }
+  h2 {
+    font-size: 13px;
+    font-family: 'JetBrains Mono', monospace;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--mute);
+    margin: 0 0 14px;
+    font-weight: 600;
+  }
+  h2 .num { color: var(--cyan); margin-right: 6px; }
+
+  button, .btn {
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 16px;
+    background: var(--navy);
+    color: var(--text);
+    border: 1px solid var(--navy-2);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s, border 0.12s;
+  }
+  button:hover, .btn:hover { background: var(--navy-2); color: var(--cyan); }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.ghost {
+    background: transparent;
+    border-color: var(--line);
+    color: var(--mute);
+  }
+  button.ghost:hover { color: var(--cyan); border-color: var(--cyan); }
+  button.primary { border-color: var(--cyan); }
+  button.primary:hover { background: var(--cyan); color: var(--bg); }
+
+  .auth-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .auth-row .who { font-family: 'JetBrains Mono', monospace; color: var(--mute); font-size: 13px; }
+  .auth-row .who strong { color: var(--text); font-weight: 600; }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+    padding: 14px 16px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+  }
+  .controls label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .controls input[type="checkbox"] { accent-color: var(--cyan); width: 16px; height: 16px; }
+  .controls .hint { color: var(--mute); font-size: 13px; font-family: 'JetBrains Mono', monospace; }
+
+  .pl-list {
+    display: grid;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .pl-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 16px;
+    align-items: center;
+    padding: 14px 16px;
+    background: var(--bg-2);
+  }
+  .pl-row:hover { background: #161616; }
+  .pl-name { font-weight: 600; }
+  .pl-meta { color: var(--mute); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+  .empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--mute);
+    border: 1px dashed var(--line);
+    border-radius: 4px;
+  }
+
+  .log {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--mute);
+    max-height: 280px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .log .ok { color: var(--ok); }
+  .log .warn { color: var(--warn); }
+  .log .err { color: var(--err); }
+  .log .ts { color: #555; }
+
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 18px 32px;
+    color: var(--mute);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+
+  .setup {
+    background: var(--bg-2);
+    border: 1px solid var(--warn);
+    color: var(--text);
+    border-radius: 4px;
+    padding: 16px 18px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .setup code {
+    background: #000;
+    padding: 1px 6px;
+    border-radius: 2px;
+    color: var(--cyan);
+  }
+  .setup b { color: var(--warn); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>TRUE SHUFFLE</h1>
+    <span class="chev">»»</span>
+    <span class="tag">truly random · lo media studios</span>
+  </div>
+</header>
+
+<main>
+  <section id="setup-section" hidden>
+    <div class="setup">
+      <b>SETUP REQUIRED.</b> Open this file's source and set <code>SPOTIFY_CLIENT_ID</code>
+      to your Spotify app's client ID. Register this exact URL as a redirect URI in the
+      Spotify developer dashboard: <code id="redirect-uri-display"></code>
+    </div>
+  </section>
+
+  <section id="auth-section">
+    <h2><span class="num">01</span> Authenticate</h2>
+    <div class="auth-row">
+      <button id="connect-btn" class="primary">Connect Spotify</button>
+      <span class="who" id="who" hidden>Connected as <strong id="who-name"></strong></span>
+      <button id="disconnect-btn" class="ghost" hidden>Disconnect</button>
+    </div>
+  </section>
+
+  <section id="controls-section" hidden>
+    <h2><span class="num">02</span> Options</h2>
+    <div class="controls">
+      <label>
+        <input type="checkbox" id="backup-toggle" checked>
+        <span>Back up playlist before shuffling</span>
+      </label>
+      <span class="hint">creates a copy named "Backup of …"</span>
+    </div>
+  </section>
+
+  <section id="playlists-section" hidden>
+    <h2><span class="num">03</span> Your playlists</h2>
+    <div id="playlists" class="pl-list"></div>
+  </section>
+
+  <section id="log-section" hidden>
+    <h2><span class="num">04</span> Log</h2>
+    <div id="log" class="log"></div>
+  </section>
+</main>
+
+<footer>
+  <span>True Shuffle · v0.1</span>
+  <span>Math.random() Fisher-Yates · PKCE OAuth · no storage</span>
+</footer>
+
+<script>
+//
+// CONFIG
+//
+// 1. Create a Spotify app at https://developer.spotify.com/dashboard
+// 2. Paste the client ID below.
+// 3. In the app settings, add the page's URL as a Redirect URI.
+//    The expected URI is shown in the SETUP banner when CLIENT_ID is empty.
+//
+const SPOTIFY_CLIENT_ID = '0b296a0943334e0e8bd931a8cdd8ad30'; // <-- paste your Spotify app client ID here
+
+const REDIRECT_URI = window.location.origin + window.location.pathname;
+const SCOPES = 'playlist-read-private playlist-modify-private playlist-modify-public';
+const AUTH_URL = 'https://accounts.spotify.com/authorize';
+const TOKEN_URL = 'https://accounts.spotify.com/api/token';
+const API = 'https://api.spotify.com/v1';
+
+//
+// STATE (memory only — nothing persisted)
+//
+let accessToken = null;
+let codeVerifier = null;
+let currentUser = null;
+let popupRef = null;
+
+//
+// DOM
+//
+const $ = (id) => document.getElementById(id);
+const els = {
+  setup: $('setup-section'),
+  redirectDisplay: $('redirect-uri-display'),
+  connect: $('connect-btn'),
+  disconnect: $('disconnect-btn'),
+  who: $('who'),
+  whoName: $('who-name'),
+  controls: $('controls-section'),
+  backup: $('backup-toggle'),
+  playlists: $('playlists-section'),
+  playlistsList: $('playlists'),
+  logSection: $('log-section'),
+  log: $('log'),
+};
+
+//
+// PKCE helpers
+//
+function randomString(len) {
+  const bytes = new Uint8Array(len);
+  crypto.getRandomValues(bytes);
+  // base64url-ish: alphanumeric only, easy & valid for PKCE
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join('');
+}
+async function sha256(input) {
+  const data = new TextEncoder().encode(input);
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', data));
+}
+function base64url(bytes) {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function makeCodeChallenge(verifier) {
+  return base64url(await sha256(verifier));
+}
+
+//
+// LOG
+//
+function log(msg, level = '') {
+  const ts = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.innerHTML = `<span class="ts">[${ts}]</span> <span class="${level}">${escapeHtml(msg)}</span>`;
+  els.log.appendChild(line);
+  els.log.scrollTop = els.log.scrollHeight;
+  els.logSection.hidden = false;
+}
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+//
+// POPUP CHILD-MODE: if this page loaded inside the OAuth popup with ?code=...,
+// hand the code back to opener and close.
+//
+(function popupChild() {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('code') && !params.has('error')) return;
+  if (!window.opener) return; // user landed here directly — let the main flow handle it
+  const payload = params.has('error')
+    ? { error: params.get('error') }
+    : { code: params.get('code'), state: params.get('state') };
+  try { window.opener.postMessage({ __trueShuffle: true, ...payload }, window.location.origin); } catch (e) {}
+  window.close();
+})();
+
+//
+// AUTH
+//
+async function startAuth() {
+  if (!SPOTIFY_CLIENT_ID) {
+    log('SPOTIFY_CLIENT_ID is empty. Open index.html and paste your client ID.', 'err');
+    return;
+  }
+  codeVerifier = randomString(64);
+  const challenge = await makeCodeChallenge(codeVerifier);
+  const state = randomString(16);
+  const url = new URL(AUTH_URL);
+  url.searchParams.set('client_id', SPOTIFY_CLIENT_ID);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('redirect_uri', REDIRECT_URI);
+  url.searchParams.set('code_challenge_method', 'S256');
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('scope', SCOPES);
+  url.searchParams.set('state', state);
+
+  const w = 480, h = 720;
+  const left = window.screenX + (window.outerWidth - w) / 2;
+  const top = window.screenY + (window.outerHeight - h) / 2;
+  popupRef = window.open(url.toString(), 'spotify-auth', `width=${w},height=${h},left=${left},top=${top}`);
+  if (!popupRef) {
+    log('Popup blocked. Allow popups for this site and try again.', 'err');
+    return;
+  }
+  log('Awaiting Spotify authorization…');
+  window.addEventListener('message', onAuthMessage);
+}
+
+async function onAuthMessage(ev) {
+  if (ev.origin !== window.location.origin) return;
+  if (!ev.data || !ev.data.__trueShuffle) return;
+  window.removeEventListener('message', onAuthMessage);
+  if (ev.data.error) {
+    log('Authorization failed: ' + ev.data.error, 'err');
+    return;
+  }
+  await exchangeCodeForToken(ev.data.code);
+}
+
+async function exchangeCodeForToken(code) {
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: REDIRECT_URI,
+    client_id: SPOTIFY_CLIENT_ID,
+    code_verifier: codeVerifier,
+  });
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body,
+  });
+  if (!res.ok) {
+    log('Token exchange failed: ' + res.status + ' ' + (await res.text()), 'err');
+    return;
+  }
+  const data = await res.json();
+  accessToken = data.access_token;
+  codeVerifier = null;
+  log('Connected.', 'ok');
+  await afterAuth();
+}
+
+function disconnect() {
+  accessToken = null;
+  currentUser = null;
+  els.who.hidden = true;
+  els.disconnect.hidden = true;
+  els.connect.hidden = false;
+  els.controls.hidden = true;
+  els.playlists.hidden = true;
+  els.playlistsList.innerHTML = '';
+  log('Disconnected.');
+}
+
+//
+// API
+//
+async function api(path, opts = {}) {
+  const res = await fetch(path.startsWith('http') ? path : API + path, {
+    ...opts,
+    headers: {
+      Authorization: 'Bearer ' + accessToken,
+      'Content-Type': 'application/json',
+      ...(opts.headers || {}),
+    },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+async function afterAuth() {
+  currentUser = await api('/me');
+  els.who.hidden = false;
+  els.whoName.textContent = currentUser.display_name || currentUser.id;
+  els.connect.hidden = true;
+  els.disconnect.hidden = false;
+  els.controls.hidden = false;
+  els.playlists.hidden = false;
+  await loadOwnedPlaylists();
+}
+
+async function loadOwnedPlaylists() {
+  els.playlistsList.innerHTML = '<div class="empty">Loading playlists…</div>';
+  const playlists = [];
+  let url = '/me/playlists?limit=50';
+  while (url) {
+    const page = await api(url);
+    for (const p of page.items) {
+      if (p.owner && p.owner.id === currentUser.id) playlists.push(p);
+    }
+    url = page.next;
+  }
+  renderPlaylists(playlists);
+}
+
+function renderPlaylists(playlists) {
+  els.playlistsList.innerHTML = '';
+  if (!playlists.length) {
+    els.playlistsList.innerHTML = '<div class="empty">No owned playlists found.</div>';
+    return;
+  }
+  for (const p of playlists) {
+    const row = document.createElement('div');
+    row.className = 'pl-row';
+    row.innerHTML = `
+      <div>
+        <div class="pl-name"></div>
+        <div class="pl-meta mono"></div>
+      </div>
+      <span class="pl-meta mono">${p.tracks.total} tracks</span>
+      <button class="primary">Shuffle »»</button>
+    `;
+    row.querySelector('.pl-name').textContent = p.name;
+    row.querySelector('.pl-meta').textContent = p.id;
+    const btn = row.querySelector('button');
+    btn.addEventListener('click', () => shufflePlaylist(p, btn));
+    els.playlistsList.appendChild(row);
+  }
+}
+
+//
+// SHUFFLE
+//
+function fisherYates(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+async function fetchAllTracks(playlistId) {
+  const uris = [];
+  let url = `/playlists/${playlistId}/tracks?limit=100&fields=items(track(uri,is_local)),next`;
+  while (url) {
+    const page = await api(url);
+    for (const it of page.items) {
+      if (!it.track) continue;            // unavailable / null
+      if (it.track.is_local) continue;    // local files can't be re-added reliably
+      uris.push(it.track.uri);
+    }
+    url = page.next;
+  }
+  return uris;
+}
+
+async function shufflePlaylist(playlist, btn) {
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Working…';
+  try {
+    log(`Shuffling "${playlist.name}" (${playlist.tracks.total} tracks)…`);
+    const uris = await fetchAllTracks(playlist.id);
+    log(`Fetched ${uris.length} usable track URIs.`);
+
+    if (els.backup.checked) {
+      await backupPlaylist(playlist, uris);
+    }
+
+    const shuffled = fisherYates(uris.slice());
+    await replacePlaylistTracks(playlist.id, shuffled);
+    log(`Shuffled "${playlist.name}" — ${shuffled.length} tracks reordered.`, 'ok');
+  } catch (e) {
+    log('Error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+async function backupPlaylist(playlist, uris) {
+  const today = new Date().toISOString().slice(0, 10);
+  const name = `Backup of ${playlist.name} (${today})`;
+  log(`Creating backup "${name}"…`);
+  const created = await api(`/users/${currentUser.id}/playlists`, {
+    method: 'POST',
+    body: JSON.stringify({
+      name,
+      public: false,
+      description: `Auto-backup before True Shuffle on ${today}.`,
+    }),
+  });
+  await addTracksInBatches(created.id, uris);
+  log(`Backup created (${uris.length} tracks): ${name}`, 'ok');
+}
+
+async function replacePlaylistTracks(playlistId, uris) {
+  // PUT replaces first batch of up to 100. POST appends remaining batches.
+  const first = uris.slice(0, 100);
+  await api(`/playlists/${playlistId}/tracks`, {
+    method: 'PUT',
+    body: JSON.stringify({ uris: first }),
+  });
+  if (uris.length > 100) {
+    await addTracksInBatches(playlistId, uris.slice(100));
+  }
+}
+
+async function addTracksInBatches(playlistId, uris) {
+  for (let i = 0; i < uris.length; i += 100) {
+    const batch = uris.slice(i, i + 100);
+    await api(`/playlists/${playlistId}/tracks`, {
+      method: 'POST',
+      body: JSON.stringify({ uris: batch }),
+    });
+  }
+}
+
+//
+// INIT
+//
+function init() {
+  els.redirectDisplay.textContent = REDIRECT_URI;
+  if (!SPOTIFY_CLIENT_ID) {
+    els.setup.hidden = false;
+  }
+  els.connect.addEventListener('click', startAuth);
+  els.disconnect.addEventListener('click', disconnect);
+}
+
+// Don't run main UI init if we're in popup-child mode (window already closing).
+if (!new URLSearchParams(window.location.search).has('code')
+    && !new URLSearchParams(window.location.search).has('error')) {
+  init();
+}
+</script>
+</body>
+</html>
