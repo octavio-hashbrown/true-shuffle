@@ -442,7 +442,9 @@ function disconnect() {
 // API
 //
 async function api(path, opts = {}) {
-  const res = await fetch(path.startsWith('http') ? path : API + path, {
+  const url = path.startsWith('http') ? path : API + path;
+  const method = (opts.method || 'GET').toUpperCase();
+  const res = await fetch(url, {
     ...opts,
     headers: {
       Authorization: 'Bearer ' + accessToken,
@@ -450,7 +452,10 @@ async function api(path, opts = {}) {
       ...(opts.headers || {}),
     },
   });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${await res.text()}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`${method} ${path} → ${res.status} ${res.statusText || ''} ${body}`.trim());
+  }
   if (res.status === 204) return null;
   return res.json();
 }
