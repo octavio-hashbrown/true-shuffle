@@ -576,7 +576,7 @@ async function backupPlaylist(playlist, uris) {
   const today = new Date().toISOString().slice(0, 10);
   const name = `Backup of ${playlist.name} (${today})`;
   log(`Creating backup "${name}"…`);
-  const created = await api(`/users/${currentUser.id}/playlists`, {
+  const created = await api(`/me/playlists`, {
     method: 'POST',
     body: JSON.stringify({
       name,
