@@ -149,6 +149,16 @@
   .pl-row:hover { background: #161616; }
   .pl-name { font-weight: 600; }
   .pl-meta { color: var(--mute); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+  .pl-actions { display: flex; gap: 8px; }
+
+  p.hint {
+    margin: 0 0 14px;
+    color: var(--mute);
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  p.hint em { color: var(--cyan); font-style: normal; }
 
   .empty {
     padding: 24px;
@@ -235,31 +245,21 @@
     </div>
   </section>
 
-  <section id="controls-section" hidden>
-    <h2><span class="num">02</span> Options</h2>
-    <div class="controls">
-      <label>
-        <input type="checkbox" id="backup-toggle" checked>
-        <span>Back up playlist before shuffling</span>
-      </label>
-      <span class="hint">creates a copy named "Backup of …"</span>
-    </div>
-  </section>
-
   <section id="playlists-section" hidden>
-    <h2><span class="num">03</span> Your playlists</h2>
+    <h2><span class="num">02</span> Your playlists</h2>
+    <p class="hint mono">Each action creates a <em>new</em> playlist. Your originals are never modified.</p>
     <div id="playlists" class="pl-list"></div>
   </section>
 
   <section id="log-section" hidden>
-    <h2><span class="num">04</span> Log</h2>
+    <h2><span class="num">03</span> Log</h2>
     <div id="log" class="log"></div>
   </section>
 </main>
 
 <footer>
-  <span>True Shuffle · v0.1</span>
-  <span>Math.random() Fisher-Yates · PKCE OAuth · no storage</span>
+  <span>True Shuffle · v0.2</span>
+  <span>non-destructive · originals never modified</span>
 </footer>
 
 <script>
@@ -298,8 +298,6 @@ const els = {
   disconnect: $('disconnect-btn'),
   who: $('who'),
   whoName: $('who-name'),
-  controls: $('controls-section'),
-  backup: $('backup-toggle'),
   playlists: $('playlists-section'),
   playlistsList: $('playlists'),
   logSection: $('log-section'),
@@ -432,7 +430,6 @@ function disconnect() {
   els.who.hidden = true;
   els.disconnect.hidden = true;
   els.connect.hidden = false;
-  els.controls.hidden = true;
   els.playlists.hidden = true;
   els.playlistsList.innerHTML = '';
   log('Disconnected.');
@@ -467,7 +464,6 @@ async function afterAuth() {
     els.whoName.textContent = currentUser.display_name || currentUser.id;
     els.connect.hidden = true;
     els.disconnect.hidden = false;
-    els.controls.hidden = false;
     els.playlists.hidden = false;
     await loadOwnedPlaylists();
   } catch (e) {
@@ -512,18 +508,23 @@ function renderPlaylists(playlists) {
         <div class="pl-meta mono"></div>
       </div>
       <span class="pl-meta mono">${p.tracks?.total ?? '?'} tracks</span>
-      <button class="primary">Shuffle »»</button>
+      <div class="pl-actions">
+        <button class="primary" data-mode="shuffle">Shuffle »»</button>
+        <button data-mode="flip">Flip »»</button>
+      </div>
     `;
     row.querySelector('.pl-name').textContent = p.name;
     row.querySelector('.pl-meta').textContent = p.id;
-    const btn = row.querySelector('button');
-    btn.addEventListener('click', () => shufflePlaylist(p, btn));
+    const buttons = row.querySelectorAll('button[data-mode]');
+    buttons.forEach((btn) => {
+      btn.addEventListener('click', () => copyReorderedPlaylist(p, btn.dataset.mode, buttons));
+    });
     els.playlistsList.appendChild(row);
   }
 }
 
 //
-// SHUFFLE
+// REORDER
 //
 function fisherYates(arr) {
   for (let i = arr.length - 1; i > 0; i--) {
@@ -548,55 +549,41 @@ async function fetchAllTracks(playlistId) {
   return uris;
 }
 
-async function shufflePlaylist(playlist, btn) {
-  btn.disabled = true;
-  const label = btn.textContent;
-  btn.textContent = 'Working…';
+async function copyReorderedPlaylist(playlist, mode, buttons) {
+  const labels = Array.from(buttons).map((b) => b.textContent);
+  buttons.forEach((b) => { b.disabled = true; });
+  const activeBtn = Array.from(buttons).find((b) => b.dataset.mode === mode);
+  activeBtn.textContent = 'Working…';
+
+  const verb  = mode === 'flip' ? 'Flipping' : 'Shuffling';
+  const past  = mode === 'flip' ? 'Flipped'  : 'Shuffled';
+  const today = new Date().toISOString().slice(0, 10);
+
   try {
-    log(`Shuffling "${playlist.name}" (${playlist.tracks?.total ?? '?'} tracks)…`);
+    log(`${verb} "${playlist.name}" (${playlist.tracks?.total ?? '?'} tracks)…`);
     const uris = await fetchAllTracks(playlist.id);
     log(`Fetched ${uris.length} usable track URIs.`);
 
-    if (els.backup.checked) {
-      await backupPlaylist(playlist, uris);
-    }
+    const reordered = mode === 'flip'
+      ? uris.slice().reverse()
+      : fisherYates(uris.slice());
 
-    const shuffled = fisherYates(uris.slice());
-    await replacePlaylistTracks(playlist.id, shuffled);
-    log(`Shuffled "${playlist.name}" — ${shuffled.length} tracks reordered.`, 'ok');
+    const newName = `${past}: ${playlist.name}`;
+    log(`Creating "${newName}"…`);
+    const created = await api(`/me/playlists`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: newName,
+        public: false,
+        description: `${past} copy of "${playlist.name}" — created by True Shuffle on ${today}. Original is untouched.`,
+      }),
+    });
+    await addTracksInBatches(created.id, reordered);
+    log(`Created "${newName}" (${reordered.length} tracks). Original untouched.`, 'ok');
   } catch (e) {
     log('Error: ' + e.message, 'err');
   } finally {
-    btn.disabled = false;
-    btn.textContent = label;
-  }
-}
-
-async function backupPlaylist(playlist, uris) {
-  const today = new Date().toISOString().slice(0, 10);
-  const name = `Backup of ${playlist.name} (${today})`;
-  log(`Creating backup "${name}"…`);
-  const created = await api(`/me/playlists`, {
-    method: 'POST',
-    body: JSON.stringify({
-      name,
-      public: false,
-      description: `Auto-backup before True Shuffle on ${today}.`,
-    }),
-  });
-  await addTracksInBatches(created.id, uris);
-  log(`Backup created (${uris.length} tracks): ${name}`, 'ok');
-}
-
-async function replacePlaylistTracks(playlistId, uris) {
-  // PUT replaces first batch of up to 100. POST appends remaining batches.
-  const first = uris.slice(0, 100);
-  await api(`/playlists/${playlistId}/items`, {
-    method: 'PUT',
-    body: JSON.stringify({ uris: first }),
-  });
-  if (uris.length > 100) {
-    await addTracksInBatches(playlistId, uris.slice(100));
+    buttons.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
   }
 }
 
