@@ -201,6 +201,25 @@
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
   }
+  .opt-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 14px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--mute);
+    user-select: none;
+  }
+  .opt-row input { accent-color: var(--cyan); margin-top: 3px; width: 14px; height: 14px; }
+  .opt-row code {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--cyan);
+    background: #000;
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 12px;
+  }
 
   p.hint {
     margin: 0 0 14px;
@@ -298,11 +317,15 @@
 
   <section id="discography-section" hidden>
     <h2><span class="num">02</span> Discography mode</h2>
-    <p class="hint mono">Pick an artist. We pull every album, single, compilation, and guest feature, then shuffle tracks within each album and shuffle the order of albums. Creates a <em>new</em> playlist.</p>
+    <p class="hint mono">Pick an artist. We pull every album, single, and compilation, then shuffle tracks within each album and shuffle the order of albums. Creates a <em>new</em> playlist.</p>
     <div class="search-wrap">
       <input type="text" id="artist-search" class="search-input" placeholder="Search for an artist…" autocomplete="off" spellcheck="false">
       <div id="artist-results" class="search-results" hidden></div>
     </div>
+    <label class="opt-row">
+      <input type="checkbox" id="include-features">
+      <span>Include guest features (<code>appears_on</code>) — collabs where this artist appears on someone else's album. Off by default because it can balloon to thousands of tracks.</span>
+    </label>
   </section>
 
   <section id="playlists-section" hidden>
@@ -318,8 +341,8 @@
 </main>
 
 <footer>
-  <span>True Shuffle · v0.3</span>
-  <span>shuffle · flip · discography album-block</span>
+  <span>True Shuffle · v0.4</span>
+  <span>shuffle · flip · discography · preflight + cleanup</span>
 </footer>
 
 <script>
@@ -361,6 +384,7 @@ const els = {
   discography: $('discography-section'),
   artistSearch: $('artist-search'),
   artistResults: $('artist-results'),
+  includeFeatures: $('include-features'),
   playlists: $('playlists-section'),
   playlistsList: $('playlists'),
   logSection: $('log-section'),
@@ -497,6 +521,7 @@ function disconnect() {
   els.artistSearch.value = '';
   els.artistResults.hidden = true;
   els.artistResults.innerHTML = '';
+  els.includeFeatures.checked = false;
   els.playlists.hidden = true;
   els.playlistsList.innerHTML = '';
   log('Disconnected.');
@@ -653,6 +678,7 @@ async function copyReorderedPlaylist(playlist, mode, buttons) {
   const past  = mode === 'flip' ? 'Flipped'  : 'Shuffled';
   const today = new Date().toISOString().slice(0, 10);
 
+  let createdId = null;
   try {
     log(`${verb} "${playlist.name}" (${playlist.tracks?.total ?? '?'} tracks)…`);
     const uris = await fetchAllTracks(playlist.id);
@@ -672,10 +698,12 @@ async function copyReorderedPlaylist(playlist, mode, buttons) {
         description: `${past} copy of "${playlist.name}" — created by True Shuffle on ${today}. Original is untouched.`,
       }),
     });
-    await addTracksInBatches(created.id, reordered);
+    createdId = created.id;
+    await addTracksInBatches(createdId, reordered);
     log(`Created "${newName}" (${reordered.length} tracks). Original untouched.`, 'ok');
   } catch (e) {
     log('Error: ' + e.message, 'err');
+    if (createdId) await cleanupOrphan(createdId);
   } finally {
     buttons.forEach((b, i) => { b.disabled = false; b.textContent = labels[i]; });
   }
@@ -783,10 +811,40 @@ async function createDiscographyPlaylist(artist) {
   els.artistSearch.disabled = true;
   const today = new Date().toISOString().slice(0, 10);
 
+  const includeFeatures = els.includeFeatures.checked;
+  const groups = includeFeatures
+    ? 'album,single,compilation,appears_on'
+    : 'album,single,compilation';
+  const groupsLabel = includeFeatures
+    ? 'albums + singles + compilations + features'
+    : 'albums + singles + compilations';
+
+  let createdId = null;
   try {
-    log(`Fetching discography for "${artist.name}"…`);
-    const albums = await fetchArtistAlbums(artist.id);
-    log(`Found ${albums.length} releases (albums + singles + compilations + features).`);
+    // Preflight: cheap call to get the release count before doing the heavy work.
+    log(`Checking discography size for "${artist.name}"…`);
+    const peek = await api(`/artists/${artist.id}/albums?include_groups=${groups}&limit=1`);
+    const releaseCount = peek.total ?? 0;
+    if (releaseCount === 0) {
+      log(`No releases found for "${artist.name}".`, 'warn');
+      return;
+    }
+    const estSec = Math.max(8, Math.ceil(releaseCount * 0.3));
+    const minutes = estSec > 60 ? ` (~${Math.ceil(estSec / 60)} min)` : '';
+    const proceed = window.confirm(
+      `${artist.name} has ${releaseCount} releases (${groupsLabel}).\n\n` +
+      `Estimated time: ~${estSec}s${minutes}.\n` +
+      `Spotify rate limits may slow this down further.\n\n` +
+      `Build the album-block discography playlist?`
+    );
+    if (!proceed) {
+      log('Cancelled by user.');
+      return;
+    }
+
+    log(`Fetching discography for "${artist.name}" (${groupsLabel})…`);
+    const albums = await fetchArtistAlbums(artist.id, groups);
+    log(`Found ${albums.length} releases.`);
 
     log(`Fetching tracks for ${albums.length} releases…`);
     const albumTracks = await fetchTracksForAlbums(albums);
@@ -812,23 +870,35 @@ async function createDiscographyPlaylist(artist) {
       body: JSON.stringify({
         name: newName,
         public: false,
-        description: `${artist.name} — full discography, album block shuffle. Created by True Shuffle on ${today}.`,
+        description: `${artist.name} — discography (${groupsLabel}), album block shuffle. Created by True Shuffle on ${today}.`,
       }),
     });
-    await addTracksInBatches(created.id, allUris);
+    createdId = created.id;
+    await addTracksInBatches(createdId, allUris);
     log(`Created "${newName}" — ${allUris.length} tracks across ${albumTracks.length} album blocks.`, 'ok');
   } catch (e) {
     log('Error: ' + e.message, 'err');
+    if (createdId) await cleanupOrphan(createdId);
   } finally {
     discographyBusy = false;
     els.artistSearch.disabled = false;
   }
 }
 
-async function fetchArtistAlbums(artistId) {
+async function cleanupOrphan(playlistId) {
+  try {
+    log(`Removing partial playlist ${playlistId} (cleanup)…`, 'warn');
+    await api(`/playlists/${playlistId}/followers`, { method: 'DELETE' });
+    log(`Removed partial playlist.`, 'ok');
+  } catch (e) {
+    log(`Could not auto-remove partial playlist: ${e.message}. You can delete it manually in Spotify.`, 'err');
+  }
+}
+
+async function fetchArtistAlbums(artistId, groups) {
   const seen = new Set();
   const albums = [];
-  let url = `/artists/${artistId}/albums?include_groups=album,single,compilation,appears_on&limit=10`;
+  let url = `/artists/${artistId}/albums?include_groups=${groups}&limit=10`;
   while (url) {
     const page = await api(url);
     for (const a of page.items) {
