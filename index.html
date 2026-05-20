@@ -151,6 +151,57 @@
   .pl-meta { color: var(--mute); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
   .pl-actions { display: flex; gap: 8px; }
 
+  .search-wrap { position: relative; }
+  .search-input {
+    width: 100%;
+    padding: 12px 16px;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--text);
+    font: inherit;
+    font-size: 15px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .search-input::placeholder { color: var(--mute); }
+  .search-input:focus { outline: none; border-color: var(--cyan); }
+  .search-results {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    max-height: 380px;
+    overflow-y: auto;
+    z-index: 10;
+  }
+  .search-result {
+    display: grid;
+    grid-template-columns: 48px 1fr;
+    gap: 12px;
+    padding: 10px 12px;
+    cursor: pointer;
+    align-items: center;
+    border-bottom: 1px solid var(--line);
+  }
+  .search-result:last-child { border-bottom: none; }
+  .search-result:hover { background: #161616; }
+  .search-result img {
+    width: 48px; height: 48px;
+    border-radius: 4px;
+    background: #000;
+    object-fit: cover;
+  }
+  .search-result .name { font-weight: 600; }
+  .search-result .meta { color: var(--mute); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+  .search-empty {
+    padding: 14px 12px;
+    color: var(--mute);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+  }
+
   p.hint {
     margin: 0 0 14px;
     color: var(--mute);
@@ -245,21 +296,30 @@
     </div>
   </section>
 
+  <section id="discography-section" hidden>
+    <h2><span class="num">02</span> Discography mode</h2>
+    <p class="hint mono">Pick an artist. We pull every album, single, compilation, and guest feature, then shuffle tracks within each album and shuffle the order of albums. Creates a <em>new</em> playlist.</p>
+    <div class="search-wrap">
+      <input type="text" id="artist-search" class="search-input" placeholder="Search for an artist…" autocomplete="off" spellcheck="false">
+      <div id="artist-results" class="search-results" hidden></div>
+    </div>
+  </section>
+
   <section id="playlists-section" hidden>
-    <h2><span class="num">02</span> Your playlists</h2>
+    <h2><span class="num">03</span> Your playlists</h2>
     <p class="hint mono">Each action creates a <em>new</em> playlist. Your originals are never modified.</p>
     <div id="playlists" class="pl-list"></div>
   </section>
 
   <section id="log-section" hidden>
-    <h2><span class="num">03</span> Log</h2>
+    <h2><span class="num">04</span> Log</h2>
     <div id="log" class="log"></div>
   </section>
 </main>
 
 <footer>
-  <span>True Shuffle · v0.2</span>
-  <span>non-destructive · originals never modified</span>
+  <span>True Shuffle · v0.3</span>
+  <span>shuffle · flip · discography album-block</span>
 </footer>
 
 <script>
@@ -298,6 +358,9 @@ const els = {
   disconnect: $('disconnect-btn'),
   who: $('who'),
   whoName: $('who-name'),
+  discography: $('discography-section'),
+  artistSearch: $('artist-search'),
+  artistResults: $('artist-results'),
   playlists: $('playlists-section'),
   playlistsList: $('playlists'),
   logSection: $('log-section'),
@@ -430,6 +493,10 @@ function disconnect() {
   els.who.hidden = true;
   els.disconnect.hidden = true;
   els.connect.hidden = false;
+  els.discography.hidden = true;
+  els.artistSearch.value = '';
+  els.artistResults.hidden = true;
+  els.artistResults.innerHTML = '';
   els.playlists.hidden = true;
   els.playlistsList.innerHTML = '';
   log('Disconnected.');
@@ -464,6 +531,7 @@ async function afterAuth() {
     els.whoName.textContent = currentUser.display_name || currentUser.id;
     els.connect.hidden = true;
     els.disconnect.hidden = false;
+    els.discography.hidden = false;
     els.playlists.hidden = false;
     await loadOwnedPlaylists();
   } catch (e) {
@@ -598,6 +666,178 @@ async function addTracksInBatches(playlistId, uris) {
 }
 
 //
+// DISCOGRAPHY (album block shuffle)
+//
+let searchTimer = null;
+let lastSearchQuery = '';
+let discographyBusy = false;
+
+function setupArtistSearch() {
+  const input = els.artistSearch;
+  const results = els.artistResults;
+
+  input.addEventListener('input', () => {
+    const q = input.value.trim();
+    clearTimeout(searchTimer);
+    if (!q) {
+      results.hidden = true;
+      results.innerHTML = '';
+      lastSearchQuery = '';
+      return;
+    }
+    if (q === lastSearchQuery) return;
+    searchTimer = setTimeout(() => searchArtists(q), 350);
+  });
+
+  input.addEventListener('focus', () => {
+    if (results.innerHTML) results.hidden = false;
+  });
+
+  // Hide dropdown on outside click, but use mousedown on results so clicks register first.
+  document.addEventListener('click', (ev) => {
+    if (!input.contains(ev.target) && !results.contains(ev.target)) {
+      results.hidden = true;
+    }
+  });
+}
+
+async function searchArtists(q) {
+  lastSearchQuery = q;
+  try {
+    const data = await api(`/search?q=${encodeURIComponent(q)}&type=artist&limit=8`);
+    renderArtistResults(data.artists?.items || []);
+  } catch (e) {
+    log('Artist search failed: ' + e.message, 'err');
+  }
+}
+
+function renderArtistResults(artists) {
+  const results = els.artistResults;
+  results.innerHTML = '';
+  if (!artists.length) {
+    results.innerHTML = '<div class="search-empty">No artists found.</div>';
+    results.hidden = false;
+    return;
+  }
+  for (const a of artists) {
+    const img = (a.images && a.images.length) ? a.images[a.images.length - 1].url : '';
+    const followers = a.followers?.total != null ? a.followers.total.toLocaleString() + ' followers' : '';
+    const genres = a.genres && a.genres.length ? a.genres.slice(0, 2).join(', ') : '';
+    const meta = [followers, genres].filter(Boolean).join(' · ') || ' ';
+
+    const row = document.createElement('div');
+    row.className = 'search-result';
+    row.innerHTML = `
+      <img alt="" loading="lazy">
+      <div>
+        <div class="name"></div>
+        <div class="meta"></div>
+      </div>
+    `;
+    if (img) row.querySelector('img').src = img;
+    row.querySelector('.name').textContent = a.name;
+    row.querySelector('.meta').textContent = meta;
+    row.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      if (discographyBusy) {
+        log('Already building a discography playlist — wait for it to finish.', 'warn');
+        return;
+      }
+      results.hidden = true;
+      els.artistSearch.value = a.name;
+      createDiscographyPlaylist(a);
+    });
+    results.appendChild(row);
+  }
+  results.hidden = false;
+}
+
+async function createDiscographyPlaylist(artist) {
+  discographyBusy = true;
+  els.artistSearch.disabled = true;
+  const today = new Date().toISOString().slice(0, 10);
+
+  try {
+    log(`Fetching discography for "${artist.name}"…`);
+    const albums = await fetchArtistAlbums(artist.id);
+    log(`Found ${albums.length} releases (albums + singles + compilations + features).`);
+
+    log(`Fetching tracks for ${albums.length} releases…`);
+    const albumTracks = await fetchTracksForAlbums(albums);
+    const totalTracks = albumTracks.reduce((sum, a) => sum + a.uris.length, 0);
+    log(`Got ${totalTracks} tracks across ${albumTracks.length} releases.`);
+
+    // Album block shuffle: shuffle within each album, then shuffle order of albums.
+    for (const a of albumTracks) fisherYates(a.uris);
+    fisherYates(albumTracks);
+    const allUris = albumTracks.flatMap((a) => a.uris);
+
+    const newName = `${artist.name}: Album Block`;
+    log(`Creating "${newName}"…`);
+    const created = await api(`/me/playlists`, {
+      method: 'POST',
+      body: JSON.stringify({
+        name: newName,
+        public: false,
+        description: `${artist.name} — full discography, album block shuffle. Created by True Shuffle on ${today}.`,
+      }),
+    });
+    await addTracksInBatches(created.id, allUris);
+    log(`Created "${newName}" — ${allUris.length} tracks across ${albumTracks.length} album blocks.`, 'ok');
+  } catch (e) {
+    log('Error: ' + e.message, 'err');
+  } finally {
+    discographyBusy = false;
+    els.artistSearch.disabled = false;
+  }
+}
+
+async function fetchArtistAlbums(artistId) {
+  const seen = new Set();
+  const albums = [];
+  let url = `/artists/${artistId}/albums?include_groups=album,single,compilation,appears_on&limit=50&market=from_token`;
+  while (url) {
+    const page = await api(url);
+    for (const a of page.items) {
+      if (a && a.id && !seen.has(a.id)) {
+        seen.add(a.id);
+        albums.push(a);
+      }
+    }
+    url = page.next;
+  }
+  return albums;
+}
+
+async function fetchTracksForAlbums(albums) {
+  const result = [];
+  // /albums?ids= accepts up to 20 IDs per call and returns full album objects with tracks.
+  for (let i = 0; i < albums.length; i += 20) {
+    const batch = albums.slice(i, i + 20);
+    const ids = batch.map((a) => a.id).join(',');
+    const data = await api(`/albums?ids=${ids}&market=from_token`);
+    for (const album of (data.albums || [])) {
+      if (!album || !album.tracks) continue;
+      const uris = [];
+      for (const t of (album.tracks.items || [])) {
+        if (t && t.uri && !t.is_local) uris.push(t.uri);
+      }
+      // Paginate any album with more than 50 tracks.
+      let nextUrl = album.tracks.next;
+      while (nextUrl) {
+        const page = await api(nextUrl);
+        for (const t of (page.items || [])) {
+          if (t && t.uri && !t.is_local) uris.push(t.uri);
+        }
+        nextUrl = page.next;
+      }
+      if (uris.length) result.push({ id: album.id, name: album.name, uris });
+    }
+  }
+  return result;
+}
+
+//
 // INIT
 //
 function init() {
@@ -607,6 +847,7 @@ function init() {
   }
   els.connect.addEventListener('click', startAuth);
   els.disconnect.addEventListener('click', disconnect);
+  setupArtistSearch();
 }
 
 // Don't run main UI init if we're in popup-child mode (window already closing).
