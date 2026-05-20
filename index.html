@@ -516,6 +516,12 @@ async function api(path, opts = {}) {
       ...(opts.headers || {}),
     },
   });
+  if (res.status === 429) {
+    const retryAfter = parseInt(res.headers.get('retry-after') || '2', 10);
+    log(`Rate limited by Spotify; waiting ${retryAfter}s and retrying…`, 'warn');
+    await new Promise((r) => setTimeout(r, (retryAfter + 1) * 1000));
+    return api(path, opts);
+  }
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`${method} ${path} → ${res.status} ${res.statusText || ''} ${body}`.trim());
@@ -810,28 +816,34 @@ async function fetchArtistAlbums(artistId) {
 }
 
 async function fetchTracksForAlbums(albums) {
+  // Bulk /albums?ids= was removed in the Feb 2026 migration. Fetch per album with parallelism.
+  const CONCURRENCY = 8;
   const result = [];
-  // /albums?ids= accepts up to 20 IDs per call and returns full album objects with tracks.
-  for (let i = 0; i < albums.length; i += 20) {
-    const batch = albums.slice(i, i + 20);
-    const ids = batch.map((a) => a.id).join(',');
-    const data = await api(`/albums?ids=${ids}`);
-    for (const album of (data.albums || [])) {
-      if (!album || !album.tracks) continue;
-      const uris = [];
-      for (const t of (album.tracks.items || [])) {
+  let done = 0;
+
+  async function fetchOne(album) {
+    const uris = [];
+    let url = `/albums/${album.id}/tracks?limit=50`;
+    while (url) {
+      const page = await api(url);
+      for (const t of (page.items || [])) {
         if (t && t.uri && !t.is_local) uris.push(t.uri);
       }
-      // Paginate any album with more than 50 tracks.
-      let nextUrl = album.tracks.next;
-      while (nextUrl) {
-        const page = await api(nextUrl);
-        for (const t of (page.items || [])) {
-          if (t && t.uri && !t.is_local) uris.push(t.uri);
-        }
-        nextUrl = page.next;
-      }
-      if (uris.length) result.push({ id: album.id, name: album.name, uris });
+      url = page.next;
+    }
+    done++;
+    if (done % 25 === 0 || done === albums.length) {
+      log(`  ${done}/${albums.length} releases fetched…`);
+    }
+    return uris.length ? { id: album.id, name: album.name, uris } : null;
+  }
+
+  for (let i = 0; i < albums.length; i += CONCURRENCY) {
+    const batch = albums.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map(fetchOne));
+    for (const s of settled) {
+      if (s.status === 'fulfilled' && s.value) result.push(s.value);
+      else if (s.status === 'rejected') log('  skipped one release: ' + s.reason.message, 'warn');
     }
   }
   return result;
