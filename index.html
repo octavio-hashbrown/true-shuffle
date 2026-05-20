@@ -795,7 +795,7 @@ async function createDiscographyPlaylist(artist) {
 async function fetchArtistAlbums(artistId) {
   const seen = new Set();
   const albums = [];
-  let url = `/artists/${artistId}/albums?include_groups=album,single,compilation,appears_on&limit=50&market=from_token`;
+  let url = `/artists/${artistId}/albums?include_groups=album,single,compilation,appears_on&limit=10`;
   while (url) {
     const page = await api(url);
     for (const a of page.items) {
@@ -815,7 +815,7 @@ async function fetchTracksForAlbums(albums) {
   for (let i = 0; i < albums.length; i += 20) {
     const batch = albums.slice(i, i + 20);
     const ids = batch.map((a) => a.id).join(',');
-    const data = await api(`/albums?ids=${ids}&market=from_token`);
+    const data = await api(`/albums?ids=${ids}`);
     for (const album of (data.albums || [])) {
       if (!album || !album.tracks) continue;
       const uris = [];
