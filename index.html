@@ -776,7 +776,14 @@ async function createDiscographyPlaylist(artist) {
     // Album block shuffle: shuffle within each album, then shuffle order of albums.
     for (const a of albumTracks) fisherYates(a.uris);
     fisherYates(albumTracks);
-    const allUris = albumTracks.flatMap((a) => a.uris);
+    let allUris = albumTracks.flatMap((a) => a.uris);
+
+    // Spotify caps playlists at 10,000 tracks. Truncate if we'd overflow.
+    const SPOTIFY_PLAYLIST_CAP = 10000;
+    if (allUris.length > SPOTIFY_PLAYLIST_CAP) {
+      log(`Truncating ${allUris.length} → ${SPOTIFY_PLAYLIST_CAP} tracks (Spotify playlist size cap).`, 'warn');
+      allUris = allUris.slice(0, SPOTIFY_PLAYLIST_CAP);
+    }
 
     const newName = `${artist.name}: Album Block`;
     log(`Creating "${newName}"…`);
